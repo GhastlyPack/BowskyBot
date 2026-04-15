@@ -8,6 +8,7 @@ import { membersRouter } from './routes/members.js';
 import { rolesRouter } from './routes/roles.js';
 import { channelsRouter } from './routes/channels.js';
 import { channelsMoveRouter } from './routes/channels-move.js';
+import { permissionsRouter } from './routes/permissions.js';
 
 export function startApi() {
   const app = express();
@@ -29,6 +30,7 @@ export function startApi() {
   app.use('/api/v1/servers', rolesRouter);
   app.use('/api/v1/servers', channelsRouter);
   app.use('/api/v1/servers', channelsMoveRouter);
+  app.use('/api/v1/servers', permissionsRouter);
 
   // 404 handler
   app.use((_req, res) => {
