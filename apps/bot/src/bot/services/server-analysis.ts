@@ -119,8 +119,14 @@ function recommendChannel(messageCount: number, lastMessageAt: string | null, ch
 export async function analyzeServer(guild: Guild): Promise<FullServerAnalysis> {
   logger.info(`Analyzing server: ${guild.name} (${guild.id})`);
 
-  // Fetch all members
-  await guild.members.fetch();
+  // Fetch all members (skip if already cached from a recent fetch)
+  if (guild.members.cache.size < guild.memberCount * 0.9) {
+    try {
+      await guild.members.fetch();
+    } catch (err) {
+      logger.warn(err, 'Rate limited on member fetch, using cached members');
+    }
+  }
   const members = guild.members.cache;
   const humans = members.filter(m => !m.user.bot);
   const bots = members.filter(m => m.user.bot);
