@@ -6,6 +6,7 @@ import { authMiddleware } from './middleware/auth.js';
 import { serversRouter } from './routes/servers.js';
 import { membersRouter } from './routes/members.js';
 import { rolesRouter } from './routes/roles.js';
+import { channelsRouter } from './routes/channels.js';
 
 export function startApi() {
   const app = express();
@@ -25,6 +26,7 @@ export function startApi() {
   app.use('/api/v1/servers', serversRouter);
   app.use('/api/v1/servers', membersRouter);
   app.use('/api/v1/servers', rolesRouter);
+  app.use('/api/v1/servers', channelsRouter);
 
   // 404 handler
   app.use((_req, res) => {
