@@ -4,6 +4,7 @@ import { startBot } from './bot/client.js';
 import { registerCommands } from './bot/commands/index.js';
 import { registerEvents } from './bot/events/index.js';
 import { startApi } from './api/server.js';
+import { startReminderLoop, stopReminderLoop } from './bot/services/scheduler.js';
 
 async function main() {
   logger.info('BowskyBot starting up...');
@@ -20,6 +21,9 @@ async function main() {
 
   // Start REST API
   startApi();
+
+  // Start call reminder loop
+  startReminderLoop();
 
   logger.info('BowskyBot is fully operational.');
 }

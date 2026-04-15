@@ -9,6 +9,7 @@ import { rolesRouter } from './routes/roles.js';
 import { channelsRouter } from './routes/channels.js';
 import { channelsMoveRouter } from './routes/channels-move.js';
 import { permissionsRouter } from './routes/permissions.js';
+import { schedulesRouter } from './routes/schedules.js';
 
 export function startApi() {
   const app = express();
@@ -31,6 +32,7 @@ export function startApi() {
   app.use('/api/v1/servers', channelsRouter);
   app.use('/api/v1/servers', channelsMoveRouter);
   app.use('/api/v1/servers', permissionsRouter);
+  app.use('/api/v1/servers', schedulesRouter);
 
   // 404 handler
   app.use((_req, res) => {
