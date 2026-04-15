@@ -34,7 +34,6 @@ export const schedule: BotCommand = {
             ).setRequired(true),
         )
         .addChannelOption(opt => opt.setName('channel').setDescription('Text channel for reminders').setRequired(true))
-        .addChannelOption(opt => opt.setName('vc').setDescription('Voice channel for the call').setRequired(false))
         .addStringOption(opt =>
           opt.setName('recurrence').setDescription('How often')
             .addChoices(
@@ -45,6 +44,7 @@ export const schedule: BotCommand = {
         )
         .addIntegerOption(opt => opt.setName('day').setDescription('Day of week (0=Sun, 1=Mon, ..., 6=Sat)').setMinValue(0).setMaxValue(6).setRequired(true))
         .addIntegerOption(opt => opt.setName('hour').setDescription('Hour UTC (0-23)').setMinValue(0).setMaxValue(23).setRequired(true))
+        .addChannelOption(opt => opt.setName('vc').setDescription('Voice channel for the call').setRequired(false))
         .addIntegerOption(opt => opt.setName('minute').setDescription('Minute (0-59)').setMinValue(0).setMaxValue(59).setRequired(false))
         .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in minutes').setMinValue(15).setMaxValue(480).setRequired(false)),
     )

@@ -1,4 +1,4 @@
-import { Guild, TextChannel, EmbedBuilder, VoiceState } from 'discord.js';
+import { Guild, TextChannel, EmbedBuilder, VoiceState, GuildScheduledEventEntityType, GuildScheduledEventPrivacyLevel } from 'discord.js';
 import { client } from '../client.js';
 import { logger } from '../../lib/logger.js';
 
@@ -30,7 +30,45 @@ export function createSchedule(data: Omit<CallScheduleData, 'id' | 'isActive'>):
   const schedule: CallScheduleData = { ...data, id, isActive: true };
   schedules.set(id, schedule);
   logger.info(`Created schedule "${schedule.title}" (${id}) — ${schedule.recurrence} on day ${schedule.dayOfWeek} at ${schedule.hour}:${String(schedule.minute).padStart(2, '0')} UTC`);
+
+  // Create a Discord Scheduled Event for the next occurrence
+  createDiscordEvent(schedule).catch(err => {
+    logger.warn(err, `Could not create Discord event for "${schedule.title}"`);
+  });
+
   return schedule;
+}
+
+/**
+ * Create a native Discord Scheduled Event for a call schedule.
+ * These show up in the server's event bar and members can mark "Interested".
+ */
+export async function createDiscordEvent(schedule: CallScheduleData) {
+  const guild = client.guilds.cache.get(schedule.serverId);
+  if (!guild) return;
+
+  const nextAt = getNextOccurrence(schedule);
+  const endAt = new Date(nextAt.getTime() + schedule.durationMin * 60 * 1000);
+
+  const eventData: any = {
+    name: schedule.title,
+    description: schedule.description || `${schedule.tier.charAt(0).toUpperCase() + schedule.tier.slice(1)} ${schedule.recurrence} call`,
+    scheduledStartTime: nextAt.toISOString(),
+    scheduledEndTime: endAt.toISOString(),
+    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+  };
+
+  if (schedule.voiceChannelId) {
+    eventData.entityType = GuildScheduledEventEntityType.Voice;
+    eventData.channel = schedule.voiceChannelId;
+  } else {
+    eventData.entityType = GuildScheduledEventEntityType.External;
+    eventData.entityMetadata = { location: `#${schedule.channelId}` };
+  }
+
+  const event = await guild.scheduledEvents.create(eventData);
+  logger.info(`Created Discord event "${event.name}" for ${nextAt.toISOString()}`);
+  return event;
 }
 
 export function getSchedules(serverId: string): CallScheduleData[] {
