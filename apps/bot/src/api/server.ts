@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { authMiddleware } from './middleware/auth.js';
 import { serversRouter } from './routes/servers.js';
 import { membersRouter } from './routes/members.js';
+import { rolesRouter } from './routes/roles.js';
 
 export function startApi() {
   const app = express();
@@ -23,6 +24,7 @@ export function startApi() {
   // Routes
   app.use('/api/v1/servers', serversRouter);
   app.use('/api/v1/servers', membersRouter);
+  app.use('/api/v1/servers', rolesRouter);
 
   // 404 handler
   app.use((_req, res) => {
