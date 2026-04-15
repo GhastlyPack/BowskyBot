@@ -3,6 +3,7 @@ import { logger } from './lib/logger.js';
 import { startBot } from './bot/client.js';
 import { registerCommands } from './bot/commands/index.js';
 import { registerEvents } from './bot/events/index.js';
+import { startApi } from './api/server.js';
 
 async function main() {
   logger.info('BowskyBot starting up...');
@@ -16,6 +17,9 @@ async function main() {
 
   // Connect to Discord
   await startBot();
+
+  // Start REST API
+  startApi();
 
   logger.info('BowskyBot is fully operational.');
 }
