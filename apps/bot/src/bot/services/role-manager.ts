@@ -31,6 +31,14 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Timeout wrapper — rejects if the promise doesn't resolve in time
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${label} after ${ms}ms`)), ms)),
+  ]);
+}
+
 export async function createRole(guild: Guild, options: RoleCreateOptions): Promise<Role> {
   const role = await guild.roles.create({
     name: options.name,
@@ -91,38 +99,39 @@ export async function bulkAssignRole(
   if (!role) throw new Error(`Role ${roleId} not found`);
 
   const result: BulkRoleResult = { total: memberIds.length, success: 0, failed: 0, skipped: 0, errors: [] };
-  const BATCH_SIZE = 10;
-  const BATCH_DELAY_MS = 1500; // stay under rate limits
+  const DELAY_MS = 250; // delay between each assignment
+  const TIMEOUT_MS = 10000; // 10s timeout per operation
 
-  for (let i = 0; i < memberIds.length; i += BATCH_SIZE) {
-    const batch = memberIds.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < memberIds.length; i++) {
+    const id = memberIds[i];
+    try {
+      const member = guild.members.cache.get(id);
+      if (!member) {
+        result.failed++;
+        if (result.errors.length < 20) result.errors.push(`Member ${id} not found in cache`);
+        continue;
+      }
+      if (member.roles.cache.has(roleId)) {
+        result.skipped++;
+        // No delay needed for skips
+      } else {
+        await withTimeout(
+          member.roles.add(roleId, 'Bulk assigned by BowskyBot'),
+          TIMEOUT_MS,
+          `assign role to ${id}`,
+        );
+        result.success++;
+        await delay(DELAY_MS);
+      }
+    } catch (err: any) {
+      result.failed++;
+      if (result.errors.length < 20) result.errors.push(`${id}: ${err.message}`);
+      // Back off on errors (likely rate limit)
+      await delay(2000);
+    }
 
-    await Promise.allSettled(
-      batch.map(async (id) => {
-        try {
-          const member = guild.members.cache.get(id);
-          if (!member) {
-            result.failed++;
-            result.errors.push(`Member ${id} not found in cache`);
-            return;
-          }
-          if (member.roles.cache.has(roleId)) {
-            result.skipped++;
-            return;
-          }
-          await member.roles.add(roleId, 'Bulk assigned by BowskyBot');
-          result.success++;
-        } catch (err: any) {
-          result.failed++;
-          result.errors.push(`${id}: ${err.message}`);
-        }
-      }),
-    );
-
-    onProgress?.(Math.min(i + BATCH_SIZE, memberIds.length), memberIds.length);
-
-    if (i + BATCH_SIZE < memberIds.length) {
-      await delay(BATCH_DELAY_MS);
+    if ((i + 1) % 50 === 0 || i === memberIds.length - 1) {
+      onProgress?.(i + 1, memberIds.length);
     }
   }
 
@@ -140,37 +149,36 @@ export async function bulkRemoveRole(
   if (!role) throw new Error(`Role ${roleId} not found`);
 
   const result: BulkRoleResult = { total: memberIds.length, success: 0, failed: 0, skipped: 0, errors: [] };
-  const BATCH_SIZE = 10;
-  const BATCH_DELAY_MS = 1500;
+  const DELAY_MS = 250;
+  const TIMEOUT_MS = 10000;
 
-  for (let i = 0; i < memberIds.length; i += BATCH_SIZE) {
-    const batch = memberIds.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < memberIds.length; i++) {
+    const id = memberIds[i];
+    try {
+      const member = guild.members.cache.get(id);
+      if (!member) {
+        result.failed++;
+        continue;
+      }
+      if (!member.roles.cache.has(roleId)) {
+        result.skipped++;
+      } else {
+        await withTimeout(
+          member.roles.remove(roleId, 'Bulk removed by BowskyBot'),
+          TIMEOUT_MS,
+          `remove role from ${id}`,
+        );
+        result.success++;
+        await delay(DELAY_MS);
+      }
+    } catch (err: any) {
+      result.failed++;
+      if (result.errors.length < 20) result.errors.push(`${id}: ${err.message}`);
+      await delay(2000);
+    }
 
-    await Promise.allSettled(
-      batch.map(async (id) => {
-        try {
-          const member = guild.members.cache.get(id);
-          if (!member) {
-            result.failed++;
-            return;
-          }
-          if (!member.roles.cache.has(roleId)) {
-            result.skipped++;
-            return;
-          }
-          await member.roles.remove(roleId, 'Bulk removed by BowskyBot');
-          result.success++;
-        } catch (err: any) {
-          result.failed++;
-          result.errors.push(`${id}: ${err.message}`);
-        }
-      }),
-    );
-
-    onProgress?.(Math.min(i + BATCH_SIZE, memberIds.length), memberIds.length);
-
-    if (i + BATCH_SIZE < memberIds.length) {
-      await delay(BATCH_DELAY_MS);
+    if ((i + 1) % 50 === 0 || i === memberIds.length - 1) {
+      onProgress?.(i + 1, memberIds.length);
     }
   }
 
