@@ -1,0 +1,27 @@
+{
+  "name": "bowskybot",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:bot": "npm run dev -w @bowsky/bot",
+    "dev:dashboard": "npm run dev -w @bowsky/dashboard",
+    "lint": "turbo run lint",
+    "db:generate": "npm run generate -w @bowsky/db",
+    "db:migrate": "npm run migrate -w @bowsky/db",
+    "db:push": "npm run push -w @bowsky/db",
+    "bot:deploy-commands": "npm run deploy-commands -w @bowsky/bot"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
