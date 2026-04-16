@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faDiagramProject,
@@ -15,11 +15,14 @@ import {
   faEye,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import { auth } from "@/lib/auth";
+import { getUserTier, canAccessTier } from "@/lib/roles";
 
-const categoryData: Record<string, { title: string; description: string; icon: IconDefinition; items: { title: string; description: string; status: "available" | "coming-soon" }[] }> = {
+const categoryData: Record<string, { title: string; description: string; icon: IconDefinition; tier: string; items: { title: string; description: string; status: "available" | "coming-soon" }[] }> = {
   frameworks: {
     title: "Frameworks",
     icon: faDiagramProject,
+    tier: "blueprint",
     description: "Mental models and strategic frameworks for building and scaling businesses",
     items: [
       { title: "The Business Engine Map", description: "Diagram any business through Attention > Lead > Conversion > Delivery > Retention > Cash", status: "coming-soon" },
@@ -30,6 +33,7 @@ const categoryData: Record<string, { title: string; description: string; icon: I
   templates: {
     title: "Templates",
     icon: faClipboardList,
+    tier: "blueprint",
     description: "Ready-to-use templates for hiring, SOPs, processes, and operations",
     items: [
       { title: "Hiring Decision Framework", description: "When to hire, what role first, role descriptions, and interview questions", status: "coming-soon" },
@@ -40,6 +44,7 @@ const categoryData: Record<string, { title: string; description: string; icon: I
   sops: {
     title: "SOPs & Scripts",
     icon: faFileLines,
+    tier: "blueprint",
     description: "Standard operating procedures, sales scripts, and communication playbooks",
     items: [
       { title: "Training Transfer Template", description: "How to teach someone else to produce your results", status: "coming-soon" },
@@ -49,6 +54,7 @@ const categoryData: Record<string, { title: string; description: string; icon: I
   "monthly-drops": {
     title: "Monthly Drops",
     icon: faBoxOpen,
+    tier: "blueprint",
     description: "One implementable system per month — the core of the Blueprint track",
     items: [
       { title: "Month 1: Self-Assessment Scorecard", description: "Baseline assessment across 10 dimensions — reliability, skill level, financial literacy, network, and more", status: "coming-soon" },
@@ -59,12 +65,14 @@ const categoryData: Record<string, { title: string; description: string; icon: I
   "call-recordings": {
     title: "Call Recordings",
     icon: faMicrophone,
+    tier: "all",
     description: "Recordings and notes from Blueprint and Boardroom calls",
     items: [],
   },
   "case-studies": {
     title: "Case Studies",
     icon: faChartPie,
+    tier: "boardroom",
     description: "Real-world breakdowns from consulting and advisory work",
     items: [
       { title: "Operator Breakdown Series", description: "Anonymized deep-dives into real scaling challenges and how they were solved", status: "coming-soon" },
@@ -73,6 +81,7 @@ const categoryData: Record<string, { title: string; description: string; icon: I
   tools: {
     title: "Tools & Software",
     icon: faScrewdriverWrench,
+    tier: "blueprint",
     description: "Recommended tools, software stack, and setup guides",
     items: [
       { title: "Recommended Tech Stack", description: "The tools we use and recommend for operations, finance, marketing, and communication", status: "coming-soon" },
@@ -81,6 +90,7 @@ const categoryData: Record<string, { title: string; description: string; icon: I
   events: {
     title: "Event Materials",
     icon: faCalendarCheck,
+    tier: "all",
     description: "Slides, handouts, and resources from live events and masterminds",
     items: [],
   },
@@ -90,6 +100,30 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const category = categoryData[slug];
   if (!category) notFound();
+
+  const session = await auth();
+  if (!session) redirect("/");
+
+  const discordId = (session as any).discordId;
+  const userTier = discordId ? await getUserTier(discordId) : "none" as const;
+
+  if (!canAccessTier(userTier, category.tier)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <FontAwesomeIcon icon={faLock} className="w-10 h-10 text-neutral-600 mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Upgrade Required</h1>
+          <p className="text-neutral-400 mb-4">
+            This resource requires a <strong>{category.tier === "boardroom" ? "Boardroom" : "Blueprint"}</strong> membership.
+          </p>
+          <Link href="/" className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
+            <FontAwesomeIcon icon={faArrowLeft} className="w-3 h-3 mr-1" />
+            Back to Resources
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -110,7 +144,6 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
       <main className="max-w-4xl mx-auto px-6 py-12">
         {category.items.length === 0 ? (
           <div className="text-center py-20">
-            <FontAwesomeIcon icon={faLock} className="w-8 h-8 text-neutral-700 mb-4" />
             <p className="text-neutral-500 text-lg">No resources yet</p>
             <p className="text-neutral-600 text-sm mt-2">Check back soon — new content is added regularly.</p>
           </div>
