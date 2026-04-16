@@ -1,9 +1,28 @@
 import { Router } from 'express';
 import { client } from '../../bot/client.js';
-import { analyzeServer } from '../../bot/services/server-analysis.js';
+import { analyzeServer, type FullServerAnalysis } from '../../bot/services/server-analysis.js';
 import { logger } from '../../lib/logger.js';
 
 const router = Router();
+
+// Analysis cache — refreshes every 5 minutes
+const analysisCache: Map<string, { data: FullServerAnalysis; cachedAt: number }> = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedAnalysis(guildId: string, forceRefresh = false): Promise<FullServerAnalysis> {
+  const cached = analysisCache.get(guildId);
+  if (cached && !forceRefresh && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error('Server not found');
+
+  logger.info(`Running fresh analysis for ${guild.name} (cache ${cached ? 'expired' : 'miss'})`);
+  const analysis = await analyzeServer(guild);
+  analysisCache.set(guildId, { data: analysis, cachedAt: Date.now() });
+  return analysis;
+}
 
 // GET /api/v1/servers — list all servers the bot is in
 router.get('/', (_req, res) => {
@@ -17,7 +36,7 @@ router.get('/', (_req, res) => {
   res.json({ success: true, data: guilds });
 });
 
-// GET /api/v1/servers/:serverId — server overview
+// GET /api/v1/servers/:serverId — server overview (fast, no analysis)
 router.get('/:serverId', async (req, res) => {
   const guild = client.guilds.cache.get(req.params.serverId);
   if (!guild) {
@@ -40,7 +59,7 @@ router.get('/:serverId', async (req, res) => {
   });
 });
 
-// GET /api/v1/servers/:serverId/analysis — full server analysis
+// GET /api/v1/servers/:serverId/analysis — cached server analysis
 router.get('/:serverId/analysis', async (req, res) => {
   const guild = client.guilds.cache.get(req.params.serverId);
   if (!guild) {
@@ -49,8 +68,8 @@ router.get('/:serverId/analysis', async (req, res) => {
   }
 
   try {
-    logger.info(`API: Running analysis for ${guild.name}`);
-    const analysis = await analyzeServer(guild);
+    const forceRefresh = req.query.refresh === 'true';
+    const analysis = await getCachedAnalysis(req.params.serverId, forceRefresh);
     res.json({ success: true, data: analysis });
   } catch (error) {
     logger.error(error, 'API: Failed to analyze server');
