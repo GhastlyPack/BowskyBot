@@ -18,8 +18,6 @@ import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 const navItems: { href: string; label: string; icon: IconDefinition }[] = [
   { href: "/dashboard", label: "Overview", icon: faChartLine },
   { href: "/dashboard/members", label: "Members", icon: faUsers },
-  { href: "/dashboard/roles", label: "Roles", icon: faTags },
-  { href: "/dashboard/channels", label: "Channels", icon: faHashtag },
   { href: "/dashboard/schedules", label: "Schedules", icon: faCalendar },
   { href: "/dashboard/ai", label: "AI Chat", icon: faRobot },
   { href: "/dashboard/settings", label: "Settings", icon: faGear },
