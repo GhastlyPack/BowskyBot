@@ -169,4 +169,21 @@ router.post('/:serverId/post-verify-message', async (req, res) => {
   }
 });
 
+// POST /api/v1/servers/:serverId/post-support-message
+router.post('/:serverId/post-support-message', async (req, res) => {
+  const guild = client.guilds.cache.get(req.params.serverId);
+  if (!guild) { res.status(404).json({ success: false, error: 'Server not found' }); return; }
+
+  const { channelId } = req.body;
+  if (!channelId) { res.status(400).json({ success: false, error: 'channelId is required' }); return; }
+
+  try {
+    const { postSupportMessage } = await import('../../bot/services/tickets.js');
+    await postSupportMessage(guild, channelId);
+    res.json({ success: true, message: 'Support message posted' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export { router as channelsRouter };

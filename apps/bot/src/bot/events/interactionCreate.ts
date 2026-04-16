@@ -1,7 +1,7 @@
 import { Interaction } from 'discord.js';
 import { commands } from '../client.js';
 import { logger } from '../../lib/logger.js';
-import { handleGainAccess, handleVerifyButton, handleCloseTicket } from '../services/tickets.js';
+import { handleGainAccess, handleVerifyButton, handleCloseTicket, handleOpenSupport } from '../services/tickets.js';
 
 export async function onInteractionCreate(interaction: Interaction) {
   // Handle slash commands
@@ -42,6 +42,14 @@ export async function onInteractionCreate(interaction: Interaction) {
         await interaction.deferReply({ flags: 64 });
         const member = await interaction.guild.members.fetch(interaction.user.id);
         const message = await handleVerifyButton(member);
+        await interaction.editReply({ content: message });
+      }
+
+      if (interaction.customId === 'open_support') {
+        if (!interaction.guild || !interaction.member) return;
+        await interaction.deferReply({ flags: 64 });
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        const message = await handleOpenSupport(member);
         await interaction.editReply({ content: message });
       }
 

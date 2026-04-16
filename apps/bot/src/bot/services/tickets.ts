@@ -15,8 +15,11 @@ import { client } from '../client.js';
 import { logger } from '../../lib/logger.js';
 import { verifyPurchase } from './purchases.js';
 
-// Track active tickets: discordId -> channelId (server channel or 'dm')
+// Track active verify tickets: discordId -> channelId (server channel or 'dm')
 const activeTickets: Map<string, { type: 'channel' | 'dm'; channelId?: string }> = new Map();
+
+// Track active support tickets: discordId -> channelId
+const activeSupportTickets: Map<string, string> = new Map();
 
 // TODO: Replace with actual checkout URL once FanBasis is set up
 const CHECKOUT_URL = 'https://bowskysbusiness.club';
@@ -335,6 +338,14 @@ export async function handleCloseTicket(channelId: string, userId: string) {
     }
   }
 
+  // Also clean up support tickets
+  for (const [uid, chId] of activeSupportTickets.entries()) {
+    if (chId === channelId) {
+      activeSupportTickets.delete(uid);
+      break;
+    }
+  }
+
   const guild = client.guilds.cache.first();
   if (!guild) return;
 
@@ -343,4 +354,131 @@ export async function handleCloseTicket(channelId: string, userId: string) {
     await channel.delete('Ticket closed');
     logger.info(`Ticket closed by ${userId}`);
   }
+}
+
+// ===== SUPPORT TICKETS =====
+
+/**
+ * Post the support message with a button in #support.
+ */
+export async function postSupportMessage(guild: Guild, channelId: string) {
+  const channel = guild.channels.cache.get(channelId) as TextChannel | undefined;
+  if (!channel) throw new Error('Channel not found');
+
+  const embed = new EmbedBuilder()
+    .setTitle('Need Help?')
+    .setColor(0x3498db)
+    .setDescription(
+      "Click the button below to open a private support ticket. " +
+      "A management team member will be with you shortly.\n\n" +
+      "**Common issues we can help with:**\n" +
+      "- Purchase verification problems\n" +
+      "- Cannot access channels\n" +
+      "- Call links not working\n" +
+      "- Account or billing questions\n" +
+      "- General questions about the community"
+    )
+    .setFooter({ text: 'BowskyBot' });
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('open_support')
+      .setLabel('Open Support Ticket')
+      .setStyle(ButtonStyle.Primary),
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+  logger.info(`Posted support message in #${channel.name}`);
+}
+
+/**
+ * Handle "Open Support Ticket" button — creates a private support channel.
+ */
+export async function handleOpenSupport(member: GuildMember): Promise<string> {
+  const guild = member.guild;
+
+  // Check for existing ticket
+  const existingId = activeSupportTickets.get(member.id);
+  if (existingId) {
+    const existing = guild.channels.cache.get(existingId);
+    if (existing) {
+      return `You already have a support ticket open: <#${existingId}>`;
+    }
+    activeSupportTickets.delete(member.id);
+  }
+
+  const supportCategory = guild.channels.cache.find(
+    c => c.type === ChannelType.GuildCategory && c.name.includes('SUPPORT')
+  );
+
+  const ticketChannel = await guild.channels.create({
+    name: `support-${member.user.username}`.slice(0, 100),
+    type: ChannelType.GuildText,
+    parent: supportCategory?.id,
+    permissionOverwrites: [
+      {
+        id: guild.id,
+        deny: [PermissionFlagsBits.ViewChannel],
+      },
+      {
+        id: member.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+        ],
+      },
+      {
+        id: '1055588570435424316', // Management
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ManageMessages,
+          PermissionFlagsBits.ManageChannels,
+        ],
+      },
+      {
+        id: client.user!.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ManageChannels,
+        ],
+      },
+    ],
+    reason: `Support ticket for ${member.user.tag}`,
+  });
+
+  activeSupportTickets.set(member.id, ticketChannel.id);
+
+  const embed = new EmbedBuilder()
+    .setTitle('Support Ticket')
+    .setColor(0x3498db)
+    .setDescription(
+      `Hey <@${member.id}>, a management team member will be with you shortly.\n\n` +
+      `In the meantime, please describe your issue here so we can help you faster.`
+    )
+    .setFooter({ text: 'This channel is private — only you and management can see it.' });
+
+  const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('close_ticket')
+      .setLabel('Close Ticket')
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  await ticketChannel.send({ embeds: [embed], components: [closeRow] });
+
+  // Notify in mod-logs
+  const logChannel = guild.channels.cache.find(
+    c => c.name === 'mod-logs' || c.name === 'auto-mod-logs'
+  );
+  if (logChannel?.isTextBased()) {
+    await (logChannel as any).send({
+      content: `New support ticket opened by <@${member.id}> — <#${ticketChannel.id}>`,
+    });
+  }
+
+  logger.info(`Created support ticket for ${member.user.tag}: #${ticketChannel.name}`);
+  return `Ticket created! Head to <#${ticketChannel.id}>`;
 }
