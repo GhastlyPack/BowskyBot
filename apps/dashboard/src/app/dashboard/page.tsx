@@ -1,20 +1,45 @@
-import { api } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
-export default async function DashboardPage() {
-  let servers: any[] = [];
-  let analysis: any = null;
-  let error = "";
+export default function DashboardPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
-  try {
-    const res = await api.servers.list();
-    servers = res.data;
-    if (servers.length > 0) {
-      const analysisRes = await api.servers.analysis(servers[0].id);
-      analysis = analysisRes.data;
+  async function fetchData(refresh = false) {
+    try {
+      if (refresh) setRefreshing(true);
+      else setLoading(true);
+      const res = await fetch(`/api/servers/overview${refresh ? "?refresh=true" : ""}`);
+      const json = await res.json();
+      if (json.success) {
+        setData(json.data);
+        setError("");
+      } else {
+        setError(json.error);
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  } catch (e: any) {
-    error = e.message;
+  }
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading overview...</p>
+      </div>
+    );
   }
 
   if (error) {
@@ -33,20 +58,31 @@ export default async function DashboardPage() {
     );
   }
 
-  const server = servers[0];
+  const server = data?.server;
+  const analysis = data?.analysis;
   const members = analysis?.members;
   const channelStats = analysis?.channelStats;
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-8">
-        {server.iconUrl && (
-          <img src={server.iconUrl} alt="" className="w-12 h-12 rounded-full" />
-        )}
-        <div>
-          <h1 className="text-2xl font-bold">{server.name}</h1>
-          <p className="text-sm text-muted-foreground">Server Overview</p>
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          {server?.iconUrl && (
+            <img src={server.iconUrl} alt="" className="w-12 h-12 rounded-full" />
+          )}
+          <div>
+            <h1 className="text-2xl font-bold">{server?.name}</h1>
+            <p className="text-sm text-muted-foreground">Server Overview</p>
+          </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+        >
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -135,11 +171,11 @@ export default async function DashboardPage() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Server ID</span>
-                <span className="font-mono">{server.id}</span>
+                <span className="font-mono">{server?.id}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created</span>
-                <span>{new Date(analysis?.server?.createdAt).toLocaleDateString()}</span>
+                <span>{analysis?.server?.createdAt ? new Date(analysis.server.createdAt).toLocaleDateString() : "—"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Boost Level</span>
