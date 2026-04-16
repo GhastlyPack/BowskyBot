@@ -11,6 +11,7 @@ import { channelsMoveRouter } from './routes/channels-move.js';
 import { permissionsRouter } from './routes/permissions.js';
 import { schedulesRouter } from './routes/schedules.js';
 import { aiRouter } from './routes/ai.js';
+import { webhooksRouter } from './routes/webhooks.js';
 
 export function startApi() {
   const app = express();
@@ -23,7 +24,10 @@ export function startApi() {
     res.json({ status: 'ok', uptime: process.uptime() });
   });
 
-  // All API routes require auth
+  // Webhooks — no API key auth (verified by signature)
+  app.use('/api/v1/webhooks', webhooksRouter);
+
+  // All other API routes require auth
   app.use('/api/v1', authMiddleware);
 
   // Routes
