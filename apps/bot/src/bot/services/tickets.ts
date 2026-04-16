@@ -2,6 +2,7 @@ import {
   Guild,
   GuildMember,
   TextChannel,
+  DMChannel,
   ChannelType,
   PermissionFlagsBits,
   EmbedBuilder,
@@ -12,31 +13,38 @@ import {
 } from 'discord.js';
 import { client } from '../client.js';
 import { logger } from '../../lib/logger.js';
-import { verifyPurchase, findPurchaseByEmail } from './purchases.js';
+import { verifyPurchase } from './purchases.js';
 
-// Track active tickets: discordId -> channelId
-const activeTickets: Map<string, string> = new Map();
+// Track active tickets: discordId -> channelId (server channel or 'dm')
+const activeTickets: Map<string, { type: 'channel' | 'dm'; channelId?: string }> = new Map();
+
+// TODO: Replace with actual checkout URL once FanBasis is set up
+const CHECKOUT_URL = 'https://bowskysbusiness.club';
 
 /**
- * Post the verification message with a button in the #join channel.
+ * Post the join message with two buttons in the #join channel.
  */
 export async function postVerifyMessage(guild: Guild, channelId: string) {
   const channel = guild.channels.cache.get(channelId) as TextChannel | undefined;
   if (!channel) throw new Error('Channel not found');
 
   const embed = new EmbedBuilder()
-    .setTitle('Welcome to Bowsky\'s Community')
+    .setTitle("Bowsky's Community")
     .setColor(0x3498db)
     .setDescription(
-      'This is an exclusive membership community for entrepreneurs and operators.\n\n' +
-      '**Already purchased?**\n' +
-      'Click the button below to verify your purchase and unlock all channels.\n\n' +
-      '**Ready to join?**\n' +
-      'Visit our site to get started with a Blueprint or Boardroom membership.'
+      "An exclusive membership community for entrepreneurs and operators building real businesses.\n\n" +
+      "**Ready to join?**\n" +
+      "Click **Gain Access** to learn about membership options and get your checkout link.\n\n" +
+      "**Already purchased?**\n" +
+      "Click **Verify Purchase** to unlock your access."
     )
     .setFooter({ text: 'BowskyBot' });
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('gain_access')
+      .setLabel('Gain Access')
+      .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('verify_ticket')
       .setLabel('Verify Purchase')
@@ -44,44 +52,121 @@ export async function postVerifyMessage(guild: Guild, channelId: string) {
   );
 
   await channel.send({ embeds: [embed], components: [row] });
-  logger.info(`Posted verify message in #${channel.name}`);
+  logger.info(`Posted join message in #${channel.name}`);
 }
 
 /**
- * Handle the "Verify Purchase" button click.
- * Creates a private ticket channel for the user.
+ * Handle "Gain Access" button — DM the user membership info + checkout link.
+ */
+export async function handleGainAccess(member: GuildMember): Promise<string> {
+  const blueprintEmbed = new EmbedBuilder()
+    .setTitle("Bowsky's Blueprint — $99/month")
+    .setColor(0x3498db)
+    .setDescription(
+      "**The system. The playbook.**\n\n" +
+      "For aspiring entrepreneurs and early-stage operators who need structure, frameworks, and direction.\n\n" +
+      "**What you get:**\n" +
+      "- Private community access with other builders\n" +
+      "- Monthly group call with Q&A\n" +
+      "- Content vault: frameworks, templates, SOPs, scripts\n" +
+      "- Monthly actionable drops — one implementable system per month\n" +
+      "- Resources library"
+    );
+
+  const boardroomEmbed = new EmbedBuilder()
+    .setTitle("Bowsky's Boardroom — $999+/month")
+    .setColor(0x9b59b6)
+    .setDescription(
+      "**The room. The strategy. The access.**\n\n" +
+      "For 7-8 figure operators who want networking, tactical depth, and proximity.\n\n" +
+      "**What you get:**\n" +
+      "- Everything in Blueprint\n" +
+      "- 4 weekly calls (hot seats + lessons)\n" +
+      "- Networking, events, meetups, member directory\n" +
+      "- Deal flow and opportunity channel\n" +
+      "- Discounted access to in-person events and mastermind dinners"
+    );
+
+  const ctaEmbed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setDescription(
+      `**Ready to join?**\n[Click here to get started](${CHECKOUT_URL})\n\n` +
+      "Once you've purchased, come back to the server and click **Verify Purchase** to unlock your access."
+    );
+
+  try {
+    await member.user.send({ embeds: [blueprintEmbed, boardroomEmbed, ctaEmbed] });
+    logger.info(`Sent membership info DM to ${member.user.tag}`);
+    return "Check your DMs! I've sent you the membership details and checkout link.";
+  } catch {
+    logger.warn(`Could not DM ${member.user.tag} — DMs likely disabled`);
+    return "I couldn't send you a DM. Please make sure your DMs are open, or visit " + CHECKOUT_URL + " to get started.";
+  }
+}
+
+/**
+ * Handle "Verify Purchase" button — try DM first, fall back to server ticket channel.
  */
 export async function handleVerifyButton(member: GuildMember): Promise<string> {
   const guild = member.guild;
 
   // Check if user already has a ticket open
-  const existingTicketId = activeTickets.get(member.id);
-  if (existingTicketId) {
-    const existing = guild.channels.cache.get(existingTicketId);
-    if (existing) {
-      return `You already have a ticket open: <#${existingTicketId}>`;
+  const existing = activeTickets.get(member.id);
+  if (existing) {
+    if (existing.type === 'dm') {
+      return "You already have a verification in progress in your DMs with me. Check your DMs!";
     }
-    // Channel was deleted, clean up
+    if (existing.channelId) {
+      const ch = guild.channels.cache.get(existing.channelId);
+      if (ch) return `You already have a ticket open: <#${existing.channelId}>`;
+    }
     activeTickets.delete(member.id);
   }
 
-  // Find the SUPPORT category
+  // Try DM first
+  try {
+    const verifyEmbed = new EmbedBuilder()
+      .setTitle('Purchase Verification')
+      .setColor(0x3498db)
+      .setDescription(
+        "Let's get you verified!\n\n" +
+        "**Please reply with the email address you used to make your purchase.**\n\n" +
+        "I'll match it to our records and unlock your access in the server."
+      )
+      .setFooter({ text: 'This is a private conversation between you and BowskyBot.' });
+
+    await member.user.send({ embeds: [verifyEmbed] });
+    activeTickets.set(member.id, { type: 'dm' });
+    logger.info(`Started DM verification for ${member.user.tag}`);
+    return "Check your DMs! I've sent you a message to verify your purchase.";
+  } catch {
+    // DMs disabled — fall back to server ticket channel
+    logger.info(`DMs disabled for ${member.user.tag}, creating server ticket`);
+    return await createServerTicket(member);
+  }
+}
+
+/**
+ * Create a private ticket channel in the server (fallback when DMs are disabled).
+ */
+async function createServerTicket(member: GuildMember): Promise<string> {
+  const guild = member.guild;
+
   const supportCategory = guild.channels.cache.find(
     c => c.type === ChannelType.GuildCategory && c.name.includes('SUPPORT')
   );
 
-  // Create private ticket channel
   const ticketChannel = await guild.channels.create({
     name: `verify-${member.user.username}`.slice(0, 100),
     type: ChannelType.GuildText,
     parent: supportCategory?.id,
     permissionOverwrites: [
       {
-        id: guild.id, // @everyone
+        id: guild.id,
         deny: [PermissionFlagsBits.ViewChannel],
       },
       {
-        id: member.id, // The user
+        id: member.id,
         allow: [
           PermissionFlagsBits.ViewChannel,
           PermissionFlagsBits.SendMessages,
@@ -89,8 +174,7 @@ export async function handleVerifyButton(member: GuildMember): Promise<string> {
         ],
       },
       {
-        // Management role
-        id: '1055588570435424316',
+        id: '1055588570435424316', // Management
         allow: [
           PermissionFlagsBits.ViewChannel,
           PermissionFlagsBits.SendMessages,
@@ -99,7 +183,6 @@ export async function handleVerifyButton(member: GuildMember): Promise<string> {
         ],
       },
       {
-        // Bot
         id: client.user!.id,
         allow: [
           PermissionFlagsBits.ViewChannel,
@@ -111,9 +194,8 @@ export async function handleVerifyButton(member: GuildMember): Promise<string> {
     reason: `Verification ticket for ${member.user.tag}`,
   });
 
-  activeTickets.set(member.id, ticketChannel.id);
+  activeTickets.set(member.id, { type: 'channel', channelId: ticketChannel.id });
 
-  // Send intro message in the ticket
   const embed = new EmbedBuilder()
     .setTitle('Purchase Verification')
     .setColor(0x3498db)
@@ -133,79 +215,89 @@ export async function handleVerifyButton(member: GuildMember): Promise<string> {
 
   await ticketChannel.send({ embeds: [embed], components: [closeRow] });
 
-  logger.info(`Created verify ticket for ${member.user.tag}: #${ticketChannel.name}`);
+  logger.info(`Created server verify ticket for ${member.user.tag}: #${ticketChannel.name}`);
   return `Ticket created! Head to <#${ticketChannel.id}> to verify your purchase.`;
 }
 
 /**
- * Handle messages in ticket channels — check if it's an email for verification.
+ * Handle messages — works for both DM verification and server ticket channels.
  */
 export async function handleTicketMessage(message: Message) {
   if (message.author.bot) return;
-  if (!message.guild) return;
 
-  // Check if this channel is an active ticket
-  const ticketUserId = Array.from(activeTickets.entries()).find(
-    ([, channelId]) => channelId === message.channelId
-  )?.[0];
+  const ticket = activeTickets.get(message.author.id);
+  if (!ticket) return;
 
-  if (!ticketUserId) return;
-  if (message.author.id !== ticketUserId) return; // Only the ticket owner's messages
+  // Verify this is the right context
+  if (ticket.type === 'dm' && message.channel.type !== ChannelType.DM) return;
+  if (ticket.type === 'channel' && message.channelId !== ticket.channelId) return;
 
   const content = message.content.trim();
 
   // Check if it looks like an email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(content)) {
-    // Not an email — ignore or prompt
-    if (content.toLowerCase() !== 'close') {
-      await message.reply({
-        content: 'Please type the email address you used to make your purchase.',
-      });
-    }
+    await message.reply({
+      content: 'Please type the email address you used to make your purchase.',
+    });
     return;
   }
 
-  // Try to verify
-  const member = await message.guild.members.fetch(message.author.id);
-  const result = await verifyPurchase(message.guild, member, content);
+  // Need guild context for role assignment
+  const guild = client.guilds.cache.get('1055579007107727441');
+  if (!guild) {
+    await message.reply({ content: 'Something went wrong. Please try again later.' });
+    return;
+  }
+
+  const member = await guild.members.fetch(message.author.id).catch(() => null);
+  if (!member) {
+    await message.reply({ content: "I couldn't find you in the server. Make sure you've joined first." });
+    return;
+  }
+
+  const result = await verifyPurchase(guild, member, content);
 
   if (result.success) {
     const embed = new EmbedBuilder()
       .setTitle('Verified!')
       .setColor(0x2ecc71)
       .setDescription(result.message)
-      .addFields(
-        { name: 'Tier', value: result.tier || 'Unknown', inline: true },
-      );
+      .addFields({ name: 'Tier', value: result.tier || 'Unknown', inline: true });
 
     await message.reply({ embeds: [embed] });
 
     // Log to mod-logs
-    const logChannel = message.guild.channels.cache.find(
+    const logChannel = guild.channels.cache.find(
       c => c.name === 'mod-logs' || c.name === 'auto-mod-logs'
     );
     if (logChannel?.isTextBased()) {
       const logEmbed = new EmbedBuilder()
-        .setTitle('Purchase Verified via Ticket')
+        .setTitle('Purchase Verified')
         .setColor(0x2ecc71)
         .addFields(
           { name: 'User', value: `<@${member.id}>`, inline: true },
           { name: 'Email', value: content, inline: true },
           { name: 'Tier', value: result.tier || 'Unknown', inline: true },
+          { name: 'Via', value: ticket.type === 'dm' ? 'DM' : 'Server Ticket', inline: true },
         )
         .setTimestamp();
       await (logChannel as any).send({ embeds: [logEmbed] });
     }
 
-    // Auto-close after 10 seconds
-    await (message.channel as TextChannel).send('This ticket will close in 10 seconds...');
-    setTimeout(async () => {
-      try {
-        activeTickets.delete(ticketUserId);
-        await (message.channel as TextChannel).delete('Verification complete');
-      } catch { /* channel might already be deleted */ }
-    }, 10000);
+    // Clean up
+    activeTickets.delete(message.author.id);
+
+    // If server ticket, auto-close
+    if (ticket.type === 'channel' && ticket.channelId) {
+      await (message.channel as TextChannel).send('This ticket will close in 10 seconds...');
+      setTimeout(async () => {
+        try {
+          const ch = guild.channels.cache.get(ticket.channelId!);
+          if (ch) await ch.delete('Verification complete');
+        } catch { /* already deleted */ }
+      }, 10000);
+    }
   } else {
     await message.reply({
       content: result.message + '\n\nTry again with a different email, or contact management for help.',
@@ -214,15 +306,33 @@ export async function handleTicketMessage(message: Message) {
 }
 
 /**
+ * Handle DM messages — route to ticket handler if user has active DM verification.
+ */
+export async function handleDmMessage(message: Message) {
+  if (message.author.bot) return;
+  if (message.channel.type !== ChannelType.DM) return;
+
+  const ticket = activeTickets.get(message.author.id);
+  if (ticket?.type === 'dm') {
+    await handleTicketMessage(message);
+  }
+}
+
+/**
  * Handle the "Close Ticket" button click.
  */
 export async function handleCloseTicket(channelId: string, userId: string) {
-  const ticketUserId = Array.from(activeTickets.entries()).find(
-    ([, id]) => id === channelId
-  )?.[0];
+  const ticket = activeTickets.get(userId);
+  if (ticket) {
+    activeTickets.delete(userId);
+  }
 
-  if (ticketUserId) {
-    activeTickets.delete(ticketUserId);
+  // Also check by channelId in case someone else (management) closes it
+  for (const [uid, t] of activeTickets.entries()) {
+    if (t.channelId === channelId) {
+      activeTickets.delete(uid);
+      break;
+    }
   }
 
   const guild = client.guilds.cache.first();
