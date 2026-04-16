@@ -1,88 +1,66 @@
 import { Router, type Request, type Response } from 'express';
-import { verifyWebhookSignature, processFanBasisEvent, type FanBasisWebhookPayload } from '../../bot/services/fanbasis.js';
+import { recordPurchase, listPurchases, getPurchaseStats } from '../../bot/services/purchases.js';
 import { logger } from '../../lib/logger.js';
 
 const router = Router();
 
-const GUILD_ID = process.env.DISCORD_GUILD_ID || '1055579007107727441';
-
 /**
  * POST /api/v1/webhooks/fanbasis
  *
- * FanBasis will POST payment events here.
- * No auth middleware — verified by webhook signature instead.
+ * Zapier sends purchase data here when someone checks out on FanBasis.
+ * We record the purchase in our DB. User then verifies in Discord via /verify.
  *
- * To test manually:
- * curl -X POST http://localhost:3001/api/v1/webhooks/fanbasis \
- *   -H "Content-Type: application/json" \
- *   -d '{"event":"payment.success","timestamp":"...","data":{"discordId":"USER_ID","productId":"..."}}'
+ * Expected payload from Zapier:
+ * {
+ *   "email": "buyer@example.com",
+ *   "tier": "blueprint" | "boardroom",
+ *   "amount": 99,
+ *   "fanbasisId": "txn_abc123"   // optional
+ * }
  */
 router.post('/fanbasis', async (req: Request, res: Response) => {
-  const webhookSecret = process.env.FANBASIS_WEBHOOK_SECRET;
+  const { email, tier, amount, fanbasisId, ...rest } = req.body;
 
-  // Verify signature if secret is configured
-  if (webhookSecret) {
-    const signature = req.headers['x-fanbasis-signature'] as string
-      || req.headers['x-webhook-signature'] as string
-      || '';
-
-    const rawBody = JSON.stringify(req.body);
-    if (!verifyWebhookSignature(rawBody, signature, webhookSecret)) {
-      logger.warn('FanBasis webhook: invalid signature');
-      res.status(401).json({ error: 'Invalid signature' });
-      return;
-    }
-  } else {
-    logger.warn('FanBasis webhook: no secret configured — accepting without verification');
-  }
-
-  const payload = req.body as FanBasisWebhookPayload;
-
-  if (!payload.event) {
-    res.status(400).json({ error: 'Missing event field' });
+  if (!email) {
+    res.status(400).json({ ok: false, error: 'email is required' });
     return;
   }
 
-  logger.info(`FanBasis webhook received: ${payload.event}`);
+  const validTier = tier === 'boardroom' ? 'boardroom' : 'blueprint';
+
+  logger.info(`Webhook: New purchase — ${email} → ${validTier}`);
 
   try {
-    const result = await processFanBasisEvent(GUILD_ID, payload);
-    res.json({ ok: true, action: result.action, details: result.details });
+    const purchase = recordPurchase({
+      email,
+      tier: validTier,
+      amount,
+      fanbasisId,
+      metadata: Object.keys(rest).length > 0 ? rest : undefined,
+    });
+
+    res.json({
+      ok: true,
+      message: `Purchase recorded. User can verify in Discord with /verify.`,
+      purchaseId: purchase.id,
+    });
   } catch (err: any) {
-    logger.error(err, 'FanBasis webhook processing failed');
-    res.status(500).json({ error: err.message });
+    logger.error(err, 'Failed to record purchase');
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
 /**
- * POST /api/v1/webhooks/fanbasis/test
+ * GET /api/v1/webhooks/fanbasis/purchases
  *
- * Test endpoint — simulates a FanBasis payment event.
- * Requires API key auth (applied at the router level in server.ts).
+ * List all purchases (admin — requires API key via parent auth middleware).
+ * This route is behind the auth middleware since it's under /api/v1/.
+ * Access it via the /api/v1/purchases alias below or directly.
  */
-router.post('/fanbasis/test', async (req: Request, res: Response) => {
-  const { discordId, event, tier } = req.body;
-
-  if (!discordId) {
-    res.status(400).json({ success: false, error: 'discordId is required' });
-    return;
-  }
-
-  const payload: FanBasisWebhookPayload = {
-    event: event || 'payment.success',
-    timestamp: new Date().toISOString(),
-    data: {
-      discordId,
-      productId: tier === 'boardroom' ? 'test_boardroom' : 'test_blueprint',
-    },
-  };
-
-  try {
-    const result = await processFanBasisEvent(GUILD_ID, payload);
-    res.json({ ok: true, action: result.action, details: result.details });
-  } catch (err: any) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
+router.get('/fanbasis/purchases', (_req: Request, res: Response) => {
+  const purchases = listPurchases();
+  const stats = getPurchaseStats();
+  res.json({ ok: true, stats, data: purchases });
 });
 
 export { router as webhooksRouter };

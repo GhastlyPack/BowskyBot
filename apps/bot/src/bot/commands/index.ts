@@ -5,9 +5,10 @@ import { roles } from './roles.js';
 import { channels } from './channels.js';
 import { template } from './template.js';
 import { schedule } from './schedule.js';
+import { verify } from './verify.js';
 
 export function registerCommands() {
-  const allCommands = [ping, analyze, roles, channels, template, schedule];
+  const allCommands = [ping, analyze, roles, channels, template, schedule, verify];
   for (const cmd of allCommands) {
     commands.set(cmd.data.name, cmd);
   }
