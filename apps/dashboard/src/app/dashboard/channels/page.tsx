@@ -1,46 +1,45 @@
-import { api } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 const TYPE_NAMES: Record<number, string> = {
-  0: "text",
-  2: "voice",
-  4: "category",
-  5: "announcement",
-  13: "stage",
-  15: "forum",
+  0: "text", 2: "voice", 4: "category", 5: "announcement", 13: "stage", 15: "forum",
 };
-
 const TYPE_ICONS: Record<number, string> = {
-  0: "#",
-  2: "🔊",
-  5: "📣",
-  13: "📡",
-  15: "📋",
+  0: "#", 2: "🔊", 5: "📣", 13: "📡", 15: "📋",
 };
 
-export default async function ChannelsPage() {
-  let channels: any[] = [];
-  let error = "";
+export default function ChannelsPage() {
+  const [channels, setChannels] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  try {
-    const serversRes = await api.servers.list();
-    const serverId = serversRes.data[0]?.id;
-    if (serverId) {
-      const res = await api.channels.list(serverId);
-      channels = res.data;
-    }
-  } catch (e: any) {
-    error = e.message;
-  }
+  useEffect(() => {
+    fetch("/api/servers/channels")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setChannels(json.data);
+        else setError(json.error);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   const categories = channels
-    .filter((c: any) => c.type === 4)
-    .sort((a: any, b: any) => a.position - b.position);
+    .filter((c) => c.type === 4)
+    .sort((a, b) => a.position - b.position);
 
-  const uncategorized = channels.filter(
-    (c: any) => c.type !== 4 && !c.parentId
-  );
+  const uncategorized = channels.filter((c) => c.type !== 4 && !c.parentId);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <p className="text-muted-foreground">Loading channels...</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -48,7 +47,7 @@ export default async function ChannelsPage() {
         <div>
           <h1 className="text-2xl font-bold">Channels</h1>
           <p className="text-sm text-muted-foreground">
-            {channels.filter((c: any) => c.type !== 4).length} channels in {categories.length} categories
+            {channels.filter((c) => c.type !== 4).length} channels in {categories.length} categories
           </p>
         </div>
       </div>
@@ -71,7 +70,7 @@ export default async function ChannelsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
-                {uncategorized.map((ch: any) => (
+                {uncategorized.map((ch) => (
                   <div key={ch.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/50">
                     <span className="text-muted-foreground w-5">{TYPE_ICONS[ch.type] || "#"}</span>
                     <span className="text-sm">{ch.name}</span>
@@ -83,10 +82,10 @@ export default async function ChannelsPage() {
           </Card>
         )}
 
-        {categories.map((cat: any) => {
+        {categories.map((cat) => {
           const children = channels
-            .filter((c: any) => c.parentId === cat.id)
-            .sort((a: any, b: any) => a.position - b.position);
+            .filter((c) => c.parentId === cat.id)
+            .sort((a, b) => a.position - b.position);
 
           return (
             <Card key={cat.id}>
@@ -98,7 +97,7 @@ export default async function ChannelsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-1">
-                  {children.map((ch: any) => (
+                  {children.map((ch) => (
                     <div key={ch.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/50">
                       <span className="text-muted-foreground w-5">{TYPE_ICONS[ch.type] || "#"}</span>
                       <span className="text-sm">{ch.name}</span>

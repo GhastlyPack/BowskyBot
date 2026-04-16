@@ -1,24 +1,35 @@
-import { api } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export default async function RolesPage() {
-  let roles: any[] = [];
-  let error = "";
+export default function RolesPage() {
+  const [roles, setRoles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  try {
-    const serversRes = await api.servers.list();
-    const serverId = serversRes.data[0]?.id;
-    if (serverId) {
-      const res = await api.roles.list(serverId);
-      roles = res.data;
-    }
-  } catch (e: any) {
-    error = e.message;
+  useEffect(() => {
+    fetch("/api/servers/roles")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setRoles(json.data);
+        else setError(json.error);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const managedRoles = roles.filter((r) => r.isManaged);
+  const customRoles = roles.filter((r) => !r.isManaged);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <p className="text-muted-foreground">Loading roles...</p>
+      </div>
+    );
   }
-
-  const managedRoles = roles.filter((r: any) => r.isManaged);
-  const customRoles = roles.filter((r: any) => !r.isManaged);
 
   return (
     <div>
@@ -44,7 +55,7 @@ export default async function RolesPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {customRoles.map((role: any) => (
+              {customRoles.map((role) => (
                 <div key={role.id} className="flex items-center justify-between py-2">
                   <div className="flex items-center gap-3">
                     <div
@@ -53,9 +64,7 @@ export default async function RolesPage() {
                     />
                     <span className="font-medium text-sm">{role.name}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{role.memberCount.toLocaleString()}</Badge>
-                  </div>
+                  <Badge variant="secondary">{role.memberCount.toLocaleString()}</Badge>
                 </div>
               ))}
             </div>
@@ -68,7 +77,7 @@ export default async function RolesPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {managedRoles.map((role: any) => (
+              {managedRoles.map((role) => (
                 <div key={role.id} className="flex items-center justify-between py-2">
                   <div className="flex items-center gap-3">
                     <div

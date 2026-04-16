@@ -1,22 +1,33 @@
-import { api } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export default async function SchedulesPage() {
-  let schedules: any[] = [];
-  let error = "";
+export default function SchedulesPage() {
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  try {
-    const serversRes = await api.servers.list();
-    const serverId = serversRes.data[0]?.id;
-    if (serverId) {
-      const res = await api.schedules.list(serverId);
-      schedules = res.data;
-    }
-  } catch (e: any) {
-    error = e.message;
+  useEffect(() => {
+    fetch("/api/servers/schedules")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setSchedules(json.data);
+        else setError(json.error);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <p className="text-muted-foreground">Loading schedules...</p>
+      </div>
+    );
   }
 
   return (
@@ -48,7 +59,7 @@ export default async function SchedulesPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {schedules.map((schedule: any) => (
+          {schedules.map((schedule) => (
             <Card key={schedule.id}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -78,10 +89,6 @@ export default async function SchedulesPage() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Duration</span>
                     <span>{schedule.durationMin} min</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ID</span>
-                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{schedule.id}</code>
                   </div>
                 </div>
               </CardContent>
