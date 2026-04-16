@@ -3,15 +3,26 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faChartLine,
+  faUsers,
+  faTags,
+  faHashtag,
+  faCalendar,
+  faRobot,
+  faGear,
+} from "@fortawesome/free-solid-svg-icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 
-const navItems = [
-  { href: "/dashboard", label: "Overview", icon: "📊" },
-  { href: "/dashboard/members", label: "Members", icon: "👥" },
-  { href: "/dashboard/roles", label: "Roles", icon: "🏷️" },
-  { href: "/dashboard/channels", label: "Channels", icon: "💬" },
-  { href: "/dashboard/schedules", label: "Schedules", icon: "📅" },
-  { href: "/dashboard/ai", label: "AI Chat", icon: "🤖" },
-  { href: "/dashboard/settings", label: "Settings", icon: "⚙️" },
+const navItems: { href: string; label: string; icon: IconDefinition }[] = [
+  { href: "/dashboard", label: "Overview", icon: faChartLine },
+  { href: "/dashboard/members", label: "Members", icon: faUsers },
+  { href: "/dashboard/roles", label: "Roles", icon: faTags },
+  { href: "/dashboard/channels", label: "Channels", icon: faHashtag },
+  { href: "/dashboard/schedules", label: "Schedules", icon: faCalendar },
+  { href: "/dashboard/ai", label: "AI Chat", icon: faRobot },
+  { href: "/dashboard/settings", label: "Settings", icon: faGear },
 ];
 
 export function Sidebar() {
@@ -38,7 +49,7 @@ export function Sidebar() {
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <span className="text-base">{item.icon}</span>
+              <FontAwesomeIcon icon={item.icon} className="w-4 h-4" />
               {item.label}
             </Link>
           );
